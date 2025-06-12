@@ -122,6 +122,9 @@ async def on_message(message):
 
     except Exception as e:
         print(f"Error in on_message: {e}")
+        
+        await bot.process_commands(message)
+        
 
 # === EDIT PROTECTION ===
 @bot.event
