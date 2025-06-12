@@ -236,22 +236,47 @@ async def stats(ctx):
 
 @bot.command(name="leaderboard")
 async def leaderboard(ctx):
-    await post_leaderboard_embed(ctx.channel)
-
-@bot.command(name="export_csv")
-async def export_csv(ctx):
     if not tracked_messages:
-        await ctx.send("Nothing to export.")
+        await ctx.send("No data yet.")
         return
+
+    sorted_data = sorted(tracked_messages.items(), key=lambda x: x[1]["score"], reverse=True)
+
+    embed = discord.Embed(
+        title="🏆 Full Leaderboard",
+        description=f"Total Entries: {len(sorted_data)}",
+        color=0xFF9900
+    )
+
+    for i, (msg_id, data) in enumerate(sorted_data[:10], start=1):
+        author = data["author"]
+        score = data["score"]
+        link = data["link"]
+        embed.add_field(
+            name=f"{i}. {author}",
+            value=f"🔥 {score} points\n[Post]({link})",
+            inline=False
+        )
+
+    await ctx.send(embed=embed)
+
+@bot.command(name="export_full")
+async def export_full(ctx):
+    if not tracked_messages:
+        await ctx.send("No data to export.")
+        return
+
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["Author", "Score", "Link"])
-    for d in tracked_messages.values():
-        writer.writerow([d["author"], d["score"], d["link"]])
-    buffer.seek(0)
-    file = discord.File(io.BytesIO(buffer.getvalue().encode()), filename="leaderboard.csv")
-    await ctx.send("📎 Exported CSV:", file=file)
+    writer.writerow(["Rank", "Author", "Score", "Post Link"])
 
+    sorted_data = sorted(tracked_messages.items(), key=lambda x: x[1]["score"], reverse=True)
+    for i, (_, data) in enumerate(sorted_data, 1):
+        writer.writerow([i, data["author"], data["score"], data["link"]])
+
+    buffer.seek(0)
+    file = discord.File(io.BytesIO(buffer.getvalue().encode()), filename="full_leaderboard.csv")
+    await ctx.send("📎 Full Leaderboard CSV:", file=file)
 # === RUN BOT ===
 keep_alive()
 bot.run(os.getenv("DISCORD_TOKEN"))
