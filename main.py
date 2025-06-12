@@ -8,6 +8,8 @@ import os
 from datetime import datetime, timezone
 import csv
 import io
+import json  # ⭐
+from pathlib import Path  # ⭐
 
 # === KEEP ALIVE ===
 app = Flask('')
@@ -40,9 +42,30 @@ ADMIN_ROLE_ID = 1167708126716366939
 GOON_DESIGNER_ROLE_ID = 1379372046886240278
 EMOJI = "🔥"
 
-# === DATA TRACKING ===
-submitted_users = set()
+# === DATA PERSISTENCE === ⭐
+DATA_FILE = "tracked_package.json"
+
+def save_data():
+    with open(DATA_FILE, "w") as f:
+        json.dump({
+            "tracked_messages": tracked_messages,
+            "submitted_users": list(submitted_users)
+        }, f)
+
+def load_data():
+    global tracked_messages, submitted_users
+    if Path(DATA_FILE).exists():
+        with open(DATA_FILE, "r") as f:
+            data = json.load(f)
+            tracked_messages = data.get("tracked_messages", {})
+            submitted_users = set(data.get("submitted_users", []))
+    else:
+        tracked_messages = {}
+        submitted_users = set()
+
+# === INIT STATE ===
 tracked_messages = {}
+submitted_users = set()
 
 # === SCORING FUNCTION ===
 def calculate_weighted_score(user_id, guild):
@@ -55,7 +78,7 @@ async def scan_and_react_on_startup():
     guild = bot.guilds[0]
     channel = bot.get_channel(TARGET_CHANNEL_ID)
     async for message in channel.history(limit=100):
-        if message.author.bot or message.id in tracked_messages:
+        if message.author.bot or str(message.id) in tracked_messages:
             continue
         is_admin = any(role.id == ADMIN_ROLE_ID for role in message.author.roles)
         image_present = bool(message.attachments)
@@ -63,7 +86,7 @@ async def scan_and_react_on_startup():
         if is_admin or (image_present and not text_present):
             try:
                 await message.add_reaction(EMOJI)
-                tracked_messages[message.id] = {
+                tracked_messages[str(message.id)] = {
                     "author": str(message.author),
                     "link": message.jump_url,
                     "score": 0
@@ -74,11 +97,13 @@ async def scan_and_react_on_startup():
                     await message.author.add_roles(role)
             except Exception as e:
                 print(f"Startup error on message {message.id}: {e}")
+    save_data()  # ⭐
 
 # === BOT READY ===
 @bot.event
 async def on_ready():
     print(f"✅ Bot is online as {bot.user}")
+    load_data()  # ⭐
     await scan_and_react_on_startup()
     fetch_reactions.start()
     post_daily_leaderboard.start()
@@ -97,7 +122,7 @@ async def on_message(message):
         for msg_id, data in list(tracked_messages.items()):
             if data["author"] == str(message.author):
                 try:
-                    prev = await message.channel.fetch_message(msg_id)
+                    prev = await message.channel.fetch_message(int(msg_id))
                     await prev.delete()
                 except:
                     pass
@@ -106,7 +131,7 @@ async def on_message(message):
 
         if is_admin or (image_present and not text_present):
             await message.add_reaction(EMOJI)
-            tracked_messages[message.id] = {
+            tracked_messages[str(message.id)] = {
                 "author": str(message.author),
                 "link": message.jump_url,
                 "score": 0
@@ -115,6 +140,7 @@ async def on_message(message):
             role = message.guild.get_role(GOON_DESIGNER_ROLE_ID)
             if role and role not in message.author.roles:
                 await message.author.add_roles(role)
+            save_data()  # ⭐
         else:
             await message.delete()
             note = await message.channel.send(f"{message.author.mention} image-only posts are allowed.")
@@ -123,7 +149,6 @@ async def on_message(message):
     except Exception as e:
         print(f"Error in on_message: {e}")
 
-    # ✅ IMPORTANT: This allows commands like !leaderboard and !export_csv to run
     await bot.process_commands(message)
 
 # === EDIT PROTECTION ===
@@ -176,7 +201,7 @@ async def fetch_reactions():
         channel = bot.get_channel(TARGET_CHANNEL_ID)
         for msg_id in list(tracked_messages.keys()):
             try:
-                message = await channel.fetch_message(msg_id)
+                message = await channel.fetch_message(int(msg_id))
                 total = 0
                 for react in message.reactions:
                     if str(react.emoji) == EMOJI:
@@ -186,6 +211,7 @@ async def fetch_reactions():
                 tracked_messages[msg_id]["score"] = total
             except:
                 del tracked_messages[msg_id]
+        save_data()  # ⭐
     except Exception as e:
         print(f"Reaction fetch error: {e}")
 
@@ -215,6 +241,7 @@ async def post_leaderboard_embed(channel=None):
         await channel.send(embed=embed)
         tracked_messages.clear()
         submitted_users.clear()
+        save_data()  # ⭐
     except Exception as e:
         print(f"Leaderboard error: {e}")
 
@@ -249,12 +276,9 @@ async def leaderboard(ctx):
     )
 
     for i, (msg_id, data) in enumerate(sorted_data[:10], start=1):
-        author = data["author"]
-        score = data["score"]
-        link = data["link"]
         embed.add_field(
-            name=f"{i}. {author}",
-            value=f"🔥 {score} points\n[Post]({link})",
+            name=f"{i}. {data['author']}",
+            value=f"🔥 {data['score']} points\n[Post]({data['link']})",
             inline=False
         )
 
@@ -277,6 +301,7 @@ async def export_full(ctx):
     buffer.seek(0)
     file = discord.File(io.BytesIO(buffer.getvalue().encode()), filename="full_leaderboard.csv")
     await ctx.send("📎 Full Leaderboard CSV:", file=file)
+
 # === RUN BOT ===
 keep_alive()
 bot.run(os.getenv("DISCORD_TOKEN"))
