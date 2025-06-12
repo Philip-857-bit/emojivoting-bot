@@ -189,11 +189,15 @@ async def fetch_reactions():
 # === DAILY LEADERBOARD ===
 @tasks.loop(hours=24)
 async def post_daily_leaderboard():
+    await post_leaderboard_embed()
+
+async def post_leaderboard_embed(channel=None):
     try:
-        channel = bot.get_channel(TARGET_CHANNEL_ID)
         if not tracked_messages:
             return
         sorted_data = sorted(tracked_messages.items(), key=lambda x: x[1]["score"], reverse=True)
+        if not channel:
+            channel = bot.get_channel(TARGET_CHANNEL_ID)
         embed = discord.Embed(
             title="🏆 Daily Leaderboard",
             description=datetime.now(timezone.utc).strftime("%B %d, %Y"),
@@ -229,7 +233,7 @@ async def stats(ctx):
 
 @bot.command(name="leaderboard")
 async def leaderboard(ctx):
-    await post_daily_leaderboard()
+    await post_leaderboard_embed(ctx.channel)
 
 @bot.command(name="export_csv")
 async def export_csv(ctx):
