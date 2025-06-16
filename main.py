@@ -114,11 +114,17 @@ async def on_message(message):
     if message.channel.id != TARGET_CHANNEL_ID or message.author.bot:
         return
 
+    # Allow commands to go through without being deleted
+    if message.content.startswith(bot.command_prefix):
+        await bot.process_commands(message)
+        return
+
     text_present = bool(message.content.strip())
     image_present = bool(message.attachments)
     is_admin = any(role.id == ADMIN_ROLE_ID for role in message.author.roles)
 
     try:
+        # Remove any old submissions by the same author
         for msg_id, data in list(tracked_messages.items()):
             if data["author"] == str(message.author):
                 try:
@@ -140,7 +146,7 @@ async def on_message(message):
             role = message.guild.get_role(GOON_DESIGNER_ROLE_ID)
             if role and role not in message.author.roles:
                 await message.author.add_roles(role)
-            save_data()  # ⭐
+            save_data()
         else:
             await message.delete()
             note = await message.channel.send(f"{message.author.mention} image-only posts are allowed.")
@@ -148,8 +154,6 @@ async def on_message(message):
 
     except Exception as e:
         print(f"Error in on_message: {e}")
-
-    await bot.process_commands(message)
 
 # === EDIT PROTECTION ===
 @bot.event
