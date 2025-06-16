@@ -135,7 +135,8 @@ async def on_message(message):
                 del tracked_messages[msg_id]
                 submitted_users.discard(message.author.id)
 
-       if is_admin or (image_present and not text_present):
+        # Handle new valid submission
+        if is_admin or (image_present and not text_present):
             await message.add_reaction(EMOJI)
             tracked_messages[str(message.id)] = {
                 "author": str(message.author),
